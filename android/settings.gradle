@@ -1,0 +1,53 @@
+pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+
+        // Similarly, resolve the Maven package for
+        // `rustls-platform-verifier-android`
+        // if your application uses rustls and requires
+        // native platform certificate verification.
+        maven {
+            url = findCargoPackageMaven("winio-ui-android")
+            metadataSources.artifact()
+        }
+    }
+}
+
+rootProject.name = "winio-program"
+include ':app'
+
+import groovy.json.JsonSlurper
+
+String findCargoPackageMaven(String packageName) {
+    def dependencyText = providers.exec {
+        it.workingDir = new File("../")
+        commandLine("cargo", "metadata", "--format-version", "1", "--manifest-path", "Cargo.toml")
+    }.standardOutput.asText.get()
+
+    def dependencyJson = new JsonSlurper().parseText(dependencyText)
+    def pkg = dependencyJson.packages.find { it.name == packageName }
+    if (pkg == null) {
+        throw new GradleException("Cargo package '${packageName}' not found.")
+    }
+
+    def manifestPath = file(pkg.manifest_path)
+    return new File(manifestPath.parentFile, "maven").path
+}

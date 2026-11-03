@@ -1,0 +1,64 @@
+[package]
+name = "winio-program"
+version = "0.1.0"
+edition = "2024"
+
+# See https://github.com/burtonageo/cargo-bundle/tree/master#general-settings
+# Useful for packaging macOS (.app), Linux (.deb), or Windows (.msi) applications.
+[package.metadata.bundle]
+identifier = "io.github.mokurin000.example"
+
+[dependencies]
+# Error handling
+color-eyre = "0.6.5"
+
+# GUI
+winio = { version = "0.12.0", features = [
+    "win32-dark-mode",
+    # The CBS 1.6 variant of winui3 was meant for windows system apps
+    # We don't assume users have installed winui3 through any apps
+    "winui-enable-cbs",
+    # Enable this feature and uncomment `compio`
+    # if you need to spawn I/O or CPU-bound tasks.
+    # "compio-compat",
+], default-features = false }
+# compio = "0.19.0"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# If you need to make additional JNI calls, you can use:
+# `self.window.as_window().to_android()`
+# to obtain the JNI handle to `MainActivity`.
+#
+# Always use `jni::vm::JavaVM::singleton` to obtain the JVM handle.
+# jni = "0.22"
+
+[lib]
+# Required by `android/app/src/java/MainActivity.java`.
+name = "main"
+
+[[bin]]
+path = "src/main.rs"
+# If you want to customize the release artifact name in CI,
+# there's no need to change the binary name here.
+# Simply update the artifact name in your CI configuration.
+name = "app"
+
+[features]
+default = ["winui", "qt"]
+
+gtk = ["winio/gtk"]
+qt = ["winio/qt"]
+
+win32 = ["winio/win32"]
+winui = ["winio/winui"]
+
+[profile.release]
+# Panics are handled via `eyre`.
+panic = "abort"
+# Full binary optimization
+codegen-units = 1
+lto = true
+
+
+[profile.dev]
+debug = "limited"

@@ -1,0 +1,77 @@
+name: build-android
+
+on:
+  workflow_call:
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+
+    strategy:
+      matrix:
+        include:
+          - abi: arm64-v8a
+            target: aarch64-linux-android
+          - abi: x86_64
+            target: x86_64-linux-android
+
+    name: Android ${{ matrix.abi }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 🦀 Setup Rust (${{ matrix.abi }})
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: ♻️ Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: app-android-${{ matrix.abi }}
+
+      - name: 🏗 Build .so (${{ matrix.abi }})
+        run: |
+          cargo ndk -t ${{ matrix.abi }} -o android/app/src/main/jniLibs rustc --crate-type cdylib --lib --release
+
+      - name: 📝 Configure local.properties
+        run: |
+          echo "ndk.abis=${{ matrix.abi }}" > android/local.properties
+
+      - name: 📦️ Setup gradle
+        uses: gradle/actions/setup-gradle@v6
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
+        with:
+          gradle-version: "9.6.0"
+
+      - name: 🏗 Build APK (${{ matrix.abi }})
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
+        run: |
+          base64 -d > android/key.keystore <<EOF
+          ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          EOF
+
+          cd android
+          gradle assembleRelease
+
+      - name: 📁 Collect APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-${{ matrix.abi }}-release.apk dist/app-release-${{ matrix.abi }}.apk
+          ls -lh dist/
+
+      - name: 📤 Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-android-${{ matrix.abi }}
+          path: dist/
