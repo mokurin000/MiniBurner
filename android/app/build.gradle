@@ -17,11 +17,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace 'io.github.mokurin000.example'
+    namespace 'io.github.mokurin000.miniburner'
     compileSdk 37
 
     defaultConfig {
-        applicationId "io.github.mokurin000.example"
+        applicationId "io.github.mokurin000.miniburner"
         minSdk 24
         targetSdk 37
         versionCode 1

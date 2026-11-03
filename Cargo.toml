@@ -6,11 +6,15 @@ edition = "2024"
 # See https://github.com/burtonageo/cargo-bundle/tree/master#general-settings
 # Useful for packaging macOS (.app), Linux (.deb), or Windows (.msi) applications.
 [package.metadata.bundle]
-identifier = "io.github.mokurin000.example"
+identifier = "io.github.mokurin000.miniburner"
 
 [dependencies]
 # Error handling
 color-eyre = "0.6.5"
+
+# Multi-threaded CPU burning
+num_cpus = "1.17.0"
+sha2 = "0.11.1"
 
 # GUI
 winio = { version = "0.12.0", features = [

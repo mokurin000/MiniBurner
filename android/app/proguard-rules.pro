@@ -1,13 +1,13 @@
 # Alternatively, you can disable `minifyEnabled` entirely.
 
 # Your application package and Winio Activity
--keep, includedescriptorclasses class io.github.mokurin000.example.** { *; }
+-keep, includedescriptorclasses class io.github.mokurin000.miniburner.** { *; }
 -keep, includedescriptorclasses class rs.compio.winio.Activity { *; }
 -keep, includedescriptorclasses class com.google.androidgamesdk.** { *; }
 -keep, includedescriptorclasses class androidx.activity.result.** { *; }
 
 # Button
--keep, includedescriptorclasses class com.google.android.material.button.** { *; }
+# -keep, includedescriptorclasses class com.google.android.material.button.** { *; }
 
 # CheckBox
 # -keep, includedescriptorclasses class com.google.android.material.checkbox.** { *; }

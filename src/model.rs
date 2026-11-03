@@ -1,5 +1,7 @@
 //! Main GUI component for the QR code generator.
+use std::random::{Rng as _, SystemRng};
 
+use sha2::Digest;
 use winio::prelude::*;
 
 use crate::Result;
@@ -10,12 +12,6 @@ pub struct MainModel {
     window: Child<Window>,
     /// label
     label: Child<Label>,
-    /// count up
-    countup: Child<Button>,
-    /// count down
-    countdown: Child<Button>,
-
-    count: i8,
 }
 
 pub enum MainMessage {
@@ -27,10 +23,6 @@ pub enum MainMessage {
     ThemeChanged,
     /// Close main window
     Close,
-    /// Count plus by one
-    CountUp,
-    /// Count minus by one
-    CountDown,
 }
 
 impl Component for MainModel {
@@ -45,33 +37,46 @@ impl Component for MainModel {
 
         init! {
             window: Window = (()) => {
-                text: "Main window",
+                text: "MiniBurner",
                 size: Size::new(300.0, 100.0),
 
                 #[cfg(all(windows, feature = "winui"))]
                 backdrop: Backdrop::Mica,
             },
             label: Label = (&window) => {
-                text: "0",
-            },
-            countup: Button = (&window) => {
-                text: "+",
-            },
-            countdown: Button = (&window) => {
-                text: "-",
+                text: "Burning CPU...",
             },
         }
 
         window.show()?;
 
-        Ok(Self {
-            window,
-            label,
-            countup,
-            countdown,
+        let _ = std::iter::once(|| {
+            #[repr(align(128))]
+            struct Aligned<T>(T);
 
-            count: 0,
+            // 256 KiB per thread
+            let mut buf = Aligned::<_>([0u8; 256 * 1024]);
+            SystemRng.fill_bytes(&mut buf.0);
+
+            loop {
+                // AVX2 has wider support than SHA-NI on the desktop CPU
+                #[cfg(target_arch = "x86_64")]
+                let mut digest = sha2::Sha512::new();
+                // SHA512 requires ARMv8.4-A or later (2019~2021)
+                // SHA256 requires ARMv8.0-A or later (2013~2014)
+                #[cfg(not(target_arch = "x86_64"))]
+                let mut digest = sha2::Sha256::new();
+
+                std::hint::black_box(digest.update(buf.0));
+                digest.finalize();
+            }
         })
+        .cycle()
+        .take(num_cpus::get())
+        .map(std::thread::spawn)
+        .collect::<Vec<_>>();
+
+        Ok(Self { window, label })
     }
 
     async fn start(&mut self, sender: &ComponentSender<Self>) -> ! {
@@ -83,18 +88,12 @@ impl Component for MainModel {
                 WindowEvent::Close => MainMessage::Close,
                 WindowEvent::ThemeChanged => MainMessage::ThemeChanged,
             },
-            self.countup => {
-                ButtonEvent::Click => MainMessage::CountUp,
-            },
-            self.countdown => {
-                ButtonEvent::Click => MainMessage::CountDown,
-            },
         }
     }
 
     async fn update_children(&mut self) -> Result<bool> {
         // update the window and functional children
-        update_children!(self.window, self.countup,)
+        update_children!(self.window)
     }
 
     async fn update(
@@ -113,16 +112,6 @@ impl Component for MainModel {
                 // need not to call `render`
                 Ok(false)
             }
-            MainMessage::CountUp => {
-                self.count += 1;
-                self.label.set_text(format!("{}", self.count))?;
-                Ok(true)
-            }
-            MainMessage::CountDown => {
-                self.count -= 1;
-                self.label.set_text(format!("{}", self.count))?;
-                Ok(true)
-            }
         }
     }
 
@@ -130,28 +119,13 @@ impl Component for MainModel {
         let csize = self.window.client_size()?;
 
         let mut layout = layout! {
-            Grid::from_str("1*,2*,1*,2*,1*", "1*")?,
-            self.countup => {
-                row: 0,
-                column: 1,
-                halign: HAlign::Center,
-            },
+            Grid::new(
+                vec![GridLength::Stretch(1.0)],
+                vec![GridLength::Stretch(1.0)],
+            ),
             self.label => {
-                row: 0,
-                column: 2,
                 halign: HAlign::Center,
                 valign: VAlign::Center,
-            },
-            self.countdown => {
-                row: 0,
-                column: 3,
-                halign: HAlign::Center,
-            },
-        };
-        let mut layout = layout! {
-            StackPanel::new(Orient::Vertical),
-            layout => {
-                halign: HAlign::Center,
             },
         };
         layout.set_size(csize)?;

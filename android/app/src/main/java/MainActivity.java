@@ -1,4 +1,4 @@
-package io.github.mokurin000.example;
+package io.github.mokurin000.miniburner;
 
 import rs.compio.winio.Activity;
 
