@@ -40,6 +40,17 @@ impl Mat4 {
         ])
     }
 
+    /// A rotation around the Z axis by `angle` radians.
+    pub fn from_rotation_z(angle: f32) -> Self {
+        let (sin, cos) = angle.sin_cos();
+        Self::from_cols([
+            [cos, sin, 0.0, 0.0],
+            [-sin, cos, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ])
+    }
+
     /// A translation by `offset`.
     pub fn from_translation(offset: [f32; 3]) -> Self {
         Self::from_cols([
@@ -152,6 +163,15 @@ mod tests {
             Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2).transform([0.0, 1.0, 0.0, 0.0]);
         assert_close(rotated[1], 0.0);
         assert_close(rotated[2], -1.0);
+    }
+
+    #[test]
+    fn rotation_z_spins_in_the_screen_plane() {
+        let rotated =
+            Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2).transform([1.0, 0.0, 0.0, 0.0]);
+        assert_close(rotated[0], 0.0);
+        assert_close(rotated[1], 1.0);
+        assert_close(rotated[2], 0.0);
     }
 
     #[test]

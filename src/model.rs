@@ -1,11 +1,17 @@
 //! Main GUI component for the QR code generator.
 use std::random::{Rng as _, SystemRng};
+use std::time::Duration;
 
 use sha2::Digest;
 use winio::prelude::*;
 
 use crate::Result;
 use crate::donut::DonutRenderer;
+
+/// How far the donut spins around the screen's Z axis on every tick.
+const SPIN_DEGREES_PER_TICK: f32 = 6.0;
+/// Interval between two rotation ticks.
+const TICK_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Root component of the application UI.
 pub struct MainModel {
@@ -16,9 +22,13 @@ pub struct MainModel {
     device: wgpu::Device,
     queue: wgpu::Queue,
     renderer: DonutRenderer,
+    /// Rotation of the donut around the screen's Z axis, in radians.
+    spin: f32,
 }
 
 pub enum MainMessage {
+    /// Advance the donut rotation by one tick
+    Tick,
     /// Main window has been resized
     Resize,
     /// Theme changed
@@ -33,7 +43,7 @@ impl Component for MainModel {
     type Init<'a> = ();
     type Message = MainMessage;
 
-    async fn init(_init: Self::Init<'_>, _sender: &ComponentSender<Self>) -> Result<Self> {
+    async fn init(_init: Self::Init<'_>, sender: &ComponentSender<Self>) -> Result<Self> {
         // Note: color-eyre does not enable VT100 on Windows on its own
         color_eyre::install()?;
 
@@ -57,7 +67,11 @@ impl Component for MainModel {
             canvas: WgpuCanvas = (&window),
         }
         canvas.bind(&instance, &adapter);
+        canvas.set_size(window.client_size()?)?;
         window.show()?;
+
+        // Drive the donut animation from the compio runtime.
+        spawn_rotation_ticker(sender.clone());
 
         let _ = std::iter::once(|| {
             #[repr(align(128))]
@@ -91,6 +105,7 @@ impl Component for MainModel {
             device,
             queue,
             renderer,
+            spin: 0.0,
         })
     }
 
@@ -108,7 +123,7 @@ impl Component for MainModel {
 
     async fn update_children(&mut self) -> Result<bool> {
         // update the window and functional children
-        update_children!(self.window)
+        update_children!(self.window, self.canvas)
     }
 
     async fn update(
@@ -118,6 +133,11 @@ impl Component for MainModel {
     ) -> Result<bool> {
         // deal with custom messages
         match message {
+            MainMessage::Tick => {
+                self.spin = (self.spin + SPIN_DEGREES_PER_TICK.to_radians())
+                    .rem_euclid(std::f32::consts::TAU);
+                Ok(true)
+            }
             MainMessage::ThemeChanged => Ok(false),
             MainMessage::Resize => Ok(true),
             MainMessage::Close => {
@@ -144,8 +164,14 @@ impl Component for MainModel {
             return Ok(());
         };
         let size = (frame.texture.width(), frame.texture.height());
-        self.renderer
-            .render(&self.device, &self.queue, &frame.view, size, frame.format);
+        self.renderer.render(
+            &self.device,
+            &self.queue,
+            &frame.view,
+            size,
+            frame.format,
+            self.spin,
+        );
         self.canvas.present(&self.queue)?;
         Ok(())
     }
@@ -153,4 +179,15 @@ impl Component for MainModel {
     fn render_children(&mut self) -> Result<()> {
         Ok(self.window.render()?)
     }
+}
+
+/// Post a [`MainMessage::Tick`] every [`TICK_INTERVAL`] on the compio runtime.
+fn spawn_rotation_ticker(sender: ComponentSender<MainModel>) {
+    compio::runtime::spawn(async move {
+        loop {
+            compio::time::sleep(TICK_INTERVAL).await;
+            sender.post(MainMessage::Tick);
+        }
+    })
+    .detach();
 }

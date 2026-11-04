@@ -1,9 +1,9 @@
 //! Rendering of the donut model.
 //!
 //! The donut is the `donut.glb` model shipped with the app: a torus whose
-//! symmetry axis is the glTF Y axis. It is rotated a quarter turn around X so
-//! the torus ring lies flat in the view plane: the camera sees the whole ring
-//! instead of only the tube around its rim.
+//! symmetry axis is the glTF Y axis. It is tilted 15 degrees away from the
+//! screen plane and then spun around the screen's Z axis, so the camera always
+//! sees the whole ring while it turns.
 //!
 //! It is lit by a single yellow point light placed at the camera, so the light
 //! always shines from the direction the camera is facing.
@@ -23,6 +23,8 @@ const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 /// Vertical field of view of the camera in degrees.
 const FIELD_OF_VIEW_Y: f32 = 45.0;
+/// Angle between the torus plane and the screen plane, in degrees.
+const TILT_DEGREES: f32 = 15.0;
 /// Distance of the near clipping plane.
 const NEAR_PLANE: f32 = 0.1;
 /// Distance of the far clipping plane, comfortably beyond any camera distance.
@@ -64,8 +66,9 @@ struct Uniforms {
 }
 
 impl Uniforms {
-    /// Build the uniforms for one frame viewed with the given aspect ratio.
-    fn new(mesh: &gltf::Mesh, aspect_ratio: f32) -> Self {
+    /// Build the uniforms for one frame viewed with the given aspect ratio and
+    /// the donut spun by `spin` radians around the Z axis.
+    fn new(mesh: &gltf::Mesh, aspect_ratio: f32, spin: f32) -> Self {
         let half_fov_y = FIELD_OF_VIEW_Y.to_radians() * 0.5;
         // Fit the bounding sphere on both axes, with a little margin.
         let half_fov_x = (half_fov_y.tan() * aspect_ratio).atan();
@@ -82,9 +85,10 @@ impl Uniforms {
             NEAR_PLANE,
             FAR_PLANE,
         );
-        // Center the mesh, then turn the torus' Y axis towards the camera so
-        // the whole ring is parallel to the screen.
-        let model = Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+        // Center the mesh, tilt it 15 degrees away from the screen plane, then
+        // spin it around the screen's Z axis.
+        let model = Mat4::from_rotation_z(spin)
+            * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2 + TILT_DEGREES.to_radians())
             * Mat4::from_translation([-mesh.center[0], -mesh.center[1], -mesh.center[2]]);
         let view_proj = projection * view;
 
@@ -196,6 +200,8 @@ impl DonutRenderer {
     }
 
     /// Draw the donut into `view`, which must be `size` pixels large.
+    ///
+    /// `spin` is the rotation around the screen's Z axis, in radians.
     pub fn render(
         &mut self,
         device: &wgpu::Device,
@@ -203,6 +209,7 @@ impl DonutRenderer {
         view: &wgpu::TextureView,
         size: (u32, u32),
         format: wgpu::TextureFormat,
+        spin: f32,
     ) {
         let (width, height) = size;
         if width == 0 || height == 0 {
@@ -217,7 +224,7 @@ impl DonutRenderer {
         }
         self.ensure_depth_target(device, width, height);
 
-        let uniforms = Uniforms::new(&self.mesh, width as f32 / height as f32);
+        let uniforms = Uniforms::new(&self.mesh, width as f32 / height as f32, spin);
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
         let pipeline = &self.pipeline.as_ref().expect("created above").pipeline;

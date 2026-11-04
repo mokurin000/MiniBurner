@@ -26,12 +26,13 @@ winio = { git = "https://github.com/compio-rs/winio", rev = "725daf9afae5cce713e
     # The CBS 1.6 variant of winui3 was meant for windows system apps
     # We don't assume users have installed winui3 through any apps
     "winui-enable-cbs",
-    # Enable this feature and uncomment `compio`
-    # if you need to spawn I/O or CPU-bound tasks.
-    # "compio-compat",
+    # Needed by `compio::runtime::spawn` to drive the donut animation.
+    "compio-compat",
     "wgpu",
 ], default-features = false }
-# compio = "0.19.0"
+# Must match the compio version winio builds its runtime with, so that
+# `compio::runtime::spawn` can schedule the rotation ticker on it.
+compio = { version = "0.20.0-beta.1", features = ["runtime", "time"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 # If you need to make additional JNI calls, you can use:
