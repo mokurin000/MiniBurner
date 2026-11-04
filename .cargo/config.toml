@@ -1,5 +1,0 @@
-[target.aarch64-linux-android]
-rustflags = ["-C", "target-feature=-outline-atomics"]
-
-[target.x86_64-linux-android]
-rustflags = ["-C", "target-feature=-outline-atomics"]
