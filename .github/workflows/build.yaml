@@ -31,21 +31,16 @@ jobs:
   macos:
     uses: ./.github/workflows/macos.yaml
 
-  linux-glibc:
-    uses: ./.github/workflows/linux-glibc.yaml
-
-  android:
-    uses: ./.github/workflows/android.yaml
-    secrets:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+  # android:
+  #   uses: ./.github/workflows/android.yaml
+  #   secrets:
+  #     ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
   release:
     needs:
       - windows-10
       - windows-11
       - macos
-      - linux-glibc
-      - android
 
     runs-on: ubuntu-24.04
 
