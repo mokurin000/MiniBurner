@@ -5,6 +5,7 @@ use sha2::Digest;
 use winio::prelude::*;
 
 use crate::Result;
+use crate::donut::DonutRenderer;
 
 /// Root component of the application UI.
 pub struct MainModel {
@@ -14,6 +15,7 @@ pub struct MainModel {
 
     device: wgpu::Device,
     queue: wgpu::Queue,
+    renderer: DonutRenderer,
 }
 
 pub enum MainMessage {
@@ -42,11 +44,12 @@ impl Component for MainModel {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())
             .await?;
+        let renderer = DonutRenderer::new(&device)?;
 
         init! {
             window: Window = (()) => {
                 text: "MiniBurner",
-                size: Size::new(300.0, 100.0),
+                size: Size::new(800.0, 600.0),
 
                 #[cfg(all(windows, feature = "winui"))]
                 backdrop: Backdrop::Mica,
@@ -87,6 +90,7 @@ impl Component for MainModel {
             canvas,
             device,
             queue,
+            renderer,
         })
     }
 
@@ -127,7 +131,22 @@ impl Component for MainModel {
 
     fn render(&mut self, _sender: &ComponentSender<Self>) -> Result<()> {
         let csize = self.window.client_size()?;
-        self.canvas.set_size(csize)?;
+        if self.canvas.size()? != csize {
+            self.canvas.set_size(csize)?;
+        }
+        if csize.width <= 0.0 || csize.height <= 0.0 {
+            return Ok(());
+        }
+
+        // Render the donut into the canvas' swapchain texture, then hand the
+        // frame over to the widget.
+        let Some(frame) = self.canvas.acquire(&self.device) else {
+            return Ok(());
+        };
+        let size = (frame.texture.width(), frame.texture.height());
+        self.renderer
+            .render(&self.device, &self.queue, &frame.view, size, frame.format);
+        self.canvas.present(&self.queue)?;
         Ok(())
     }
 

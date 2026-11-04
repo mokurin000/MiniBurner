@@ -1,6 +1,9 @@
 #![feature(random)]
 //! Root module of the app.
 
+pub mod donut;
+mod gltf;
+mod math;
 pub mod model;
 
 /// Shorthand for `Result<T, color_eyre::Report>`.

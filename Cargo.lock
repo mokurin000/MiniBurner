@@ -3214,6 +3214,7 @@ dependencies = [
 name = "winio-program"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "color-eyre",
  "num_cpus",
  "sha2",

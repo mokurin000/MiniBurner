@@ -15,7 +15,10 @@ color-eyre = "0.6.5"
 # Multi-threaded CPU burning
 num_cpus = "1.17.0"
 sha2 = "0.11.1"
-wgpu = { version = "30", default-features = false }
+
+# GPU drawing
+bytemuck = { version = "1.25", features = ["derive"] }
+wgpu = { version = "30", default-features = false, features = ["wgsl"] }
 
 # GUI
 winio = { git = "https://github.com/compio-rs/winio", rev = "725daf9afae5cce713e4e0daef2b992347292702", features = [
