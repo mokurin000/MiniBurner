@@ -10,13 +10,13 @@ use crate::Result;
 pub struct MainModel {
     /// The main application window.
     window: Child<Window>,
-    /// label
-    label: Child<Label>,
+    canvas: Child<WgpuCanvas>,
+
+    device: wgpu::Device,
+    queue: wgpu::Queue,
 }
 
 pub enum MainMessage {
-    /// Nothing to do
-    Noop,
     /// Main window has been resized
     Resize,
     /// Theme changed
@@ -35,6 +35,14 @@ impl Component for MainModel {
         // Note: color-eyre does not enable VT100 on Windows on its own
         color_eyre::install()?;
 
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await?;
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default())
+            .await?;
+
         init! {
             window: Window = (()) => {
                 text: "MiniBurner",
@@ -43,11 +51,9 @@ impl Component for MainModel {
                 #[cfg(all(windows, feature = "winui"))]
                 backdrop: Backdrop::Mica,
             },
-            label: Label = (&window) => {
-                text: "Burning CPU...",
-            },
+            canvas: WgpuCanvas = (&window),
         }
-
+        canvas.bind(&instance, &adapter);
         window.show()?;
 
         let _ = std::iter::once(|| {
@@ -76,13 +82,18 @@ impl Component for MainModel {
         .map(std::thread::spawn)
         .collect::<Vec<_>>();
 
-        Ok(Self { window, label })
+        Ok(Self {
+            window,
+            canvas,
+            device,
+            queue,
+        })
     }
 
     async fn start(&mut self, sender: &ComponentSender<Self>) -> ! {
         // listen to events
         start! {
-            sender, default: MainMessage::Noop,
+            sender,
             self.window => {
                 WindowEvent::Resize => MainMessage::Resize,
                 WindowEvent::Close => MainMessage::Close,
@@ -103,7 +114,6 @@ impl Component for MainModel {
     ) -> Result<bool> {
         // deal with custom messages
         match message {
-            MainMessage::Noop => Ok(false),
             MainMessage::ThemeChanged => Ok(false),
             MainMessage::Resize => Ok(true),
             MainMessage::Close => {
@@ -117,18 +127,7 @@ impl Component for MainModel {
 
     fn render(&mut self, _sender: &ComponentSender<Self>) -> Result<()> {
         let csize = self.window.client_size()?;
-
-        let mut layout = layout! {
-            Grid::new(
-                vec![GridLength::Stretch(1.0)],
-                vec![GridLength::Stretch(1.0)],
-            ),
-            self.label => {
-                halign: HAlign::Center,
-                valign: VAlign::Center,
-            },
-        };
-        layout.set_size(csize)?;
+        self.canvas.set_size(csize)?;
         Ok(())
     }
 
