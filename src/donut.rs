@@ -5,8 +5,19 @@
 //! screen plane and then spun around the screen's Z axis, so the camera always
 //! sees the whole ring while it turns.
 //!
-//! It is lit by a single yellow point light placed at the camera, so the light
-//! always shines from the direction the camera is facing.
+//! On top of the base surface a stack of fur shells is drawn, each one pushed
+//! further along the surface normals. The shells only keep the strands that are
+//! long enough to reach them, and both the fur length and its coverage fall off
+//! towards grazing angles, so the fur is dense in the middle of the donut and
+//! thins out around its silhouette. Drawing every shell is the main GPU load of
+//! the app.
+//!
+//! The scene is lit by three point lights: a yellow key light at the camera, an
+//! orange light in the center of the world and a red light behind the donut,
+//! opposite the camera. Each fur fragment evaluates all three.
+//!
+//! Rendering happens into a 4x multisampled target that is resolved into the
+//! swapchain texture, which smooths the silhouette and adds more GPU work.
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
@@ -20,6 +31,8 @@ const MODEL_GLB: &[u8] = include_bytes!("../donut.glb");
 
 /// Depth format used by the render pass.
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+/// Number of samples per pixel of the multisampled render target.
+const MSAA_SAMPLES: u32 = 4;
 
 /// Vertical field of view of the camera in degrees.
 const FIELD_OF_VIEW_Y: f32 = 45.0;
@@ -34,16 +47,38 @@ const FRAME_MARGIN: f32 = 1.12;
 
 /// Base (albedo) color of the donut's dough and glaze.
 const DONUT_COLOR: [f32; 3] = [0.94, 0.76, 0.69];
-/// Color of the point light. This is what makes the donut shine yellow.
-const LIGHT_COLOR: [f32; 3] = [1.0, 0.86, 0.2];
-/// Intensity of the point light before distance attenuation.
-const LIGHT_INTENSITY: f32 = 2.5;
+/// Color of the yellow point light at the camera. This is what makes the donut
+/// shine yellow.
+const KEY_LIGHT_COLOR: [f32; 3] = [1.0, 0.86, 0.2];
+/// Intensity of the camera light before distance attenuation.
+const KEY_LIGHT_INTENSITY: f32 = 2.5;
+/// Color of the orange point light at the center of the world.
+const CENTER_LIGHT_COLOR: [f32; 3] = [1.0, 0.42, 0.04];
+/// Intensity of the center light before distance attenuation.
+const CENTER_LIGHT_INTENSITY: f32 = 1.8;
+/// Color of the red point light behind the donut, opposite the camera.
+const BACK_LIGHT_COLOR: [f32; 3] = [1.0, 0.05, 0.03];
+/// Intensity of the back light before distance attenuation.
+const BACK_LIGHT_INTENSITY: f32 = 2.5;
 /// Color of the faint ambient fill, so the unlit side is not pitch black.
 const AMBIENT_COLOR: [f32; 3] = [0.10, 0.11, 0.13];
 /// Specular exponent (shininess) of the dough.
 const SHININESS: f32 = 48.0;
 /// How strong the light's specular highlight is.
 const SPECULAR_STRENGTH: f32 = 0.6;
+/// Number of fur shells drawn on top of the donut. Each shell is a full copy
+/// of the mesh, so this is the main GPU load of the app.
+const FUR_LAYERS: u32 = 1024;
+/// Length of the fur along the surface normal, in model units.
+const FUR_LENGTH: f32 = 0.24;
+/// Number of fur strands per UV unit.
+const FUR_DENSITY: f32 = 350.0;
+/// Fur length scale at grazing angles, where the fur thins out.
+const FUR_EDGE_LENGTH: f32 = 0.18;
+/// Color of the fur tips.
+const FUR_COLOR: [f32; 3] = [1.0, 0.72, 0.28];
+/// Alpha of a single fur shell.
+const FUR_LAYER_ALPHA: f32 = 0.18;
 /// Background color of the canvas.
 const CLEAR_COLOR: wgpu::Color = wgpu::Color {
     r: 0.043,
@@ -59,10 +94,14 @@ struct Uniforms {
     view_proj: [[f32; 4]; 4],
     model: [[f32; 4]; 4],
     camera_position: [f32; 4],
-    light_position: [f32; 4],
-    light_color: [f32; 4],
+    /// xyz: world-space position, w: intensity.
+    light_positions: [[f32; 4]; 3],
+    /// rgb: light color.
+    light_colors: [[f32; 4]; 3],
     material: [f32; 4],
     ambient: [f32; 4],
+    fur: [f32; 4],
+    fur_color: [f32; 4],
 }
 
 impl Uniforms {
@@ -75,8 +114,11 @@ impl Uniforms {
         let distance =
             (mesh.radius / half_fov_y.tan()).max(mesh.radius / half_fov_x.tan()) * FRAME_MARGIN;
 
-        // The camera sits on the +Z axis and looks at the origin. The point
-        // light shares its position, so it shines along the view direction.
+        // The camera sits on the +Z axis and looks at the origin. The yellow
+        // key light shares its position, so it shines along the view
+        // direction. An orange light sits at the center of the world (inside
+        // the donut's hole) and a red light sits behind the donut, opposite the
+        // camera.
         let eye = [0.0, 0.0, distance];
         let view = Mat4::look_at_rh(eye, [0.0; 3], [0.0, 1.0, 0.0]);
         let projection = Mat4::perspective_rh(
@@ -96,8 +138,31 @@ impl Uniforms {
             view_proj: view_proj.cols,
             model: model.cols,
             camera_position: [eye[0], eye[1], eye[2], 1.0],
-            light_position: [eye[0], eye[1], eye[2], LIGHT_INTENSITY],
-            light_color: [LIGHT_COLOR[0], LIGHT_COLOR[1], LIGHT_COLOR[2], 0.0],
+            light_positions: [
+                [eye[0], eye[1], eye[2], KEY_LIGHT_INTENSITY],
+                [0.0, 0.0, 0.0, CENTER_LIGHT_INTENSITY],
+                [0.0, 0.0, -distance, BACK_LIGHT_INTENSITY],
+            ],
+            light_colors: [
+                [
+                    KEY_LIGHT_COLOR[0],
+                    KEY_LIGHT_COLOR[1],
+                    KEY_LIGHT_COLOR[2],
+                    0.0,
+                ],
+                [
+                    CENTER_LIGHT_COLOR[0],
+                    CENTER_LIGHT_COLOR[1],
+                    CENTER_LIGHT_COLOR[2],
+                    0.0,
+                ],
+                [
+                    BACK_LIGHT_COLOR[0],
+                    BACK_LIGHT_COLOR[1],
+                    BACK_LIGHT_COLOR[2],
+                    0.0,
+                ],
+            ],
             material: [DONUT_COLOR[0], DONUT_COLOR[1], DONUT_COLOR[2], SHININESS],
             ambient: [
                 AMBIENT_COLOR[0],
@@ -105,14 +170,19 @@ impl Uniforms {
                 AMBIENT_COLOR[2],
                 SPECULAR_STRENGTH,
             ],
+            fur: [FUR_LENGTH, FUR_DENSITY, FUR_EDGE_LENGTH, 0.0],
+            fur_color: [FUR_COLOR[0], FUR_COLOR[1], FUR_COLOR[2], FUR_LAYER_ALPHA],
         }
     }
 }
 
-/// A render pipeline paired with the target format it was built for.
-struct Pipeline {
+/// The render pipelines paired with the target format they were built for.
+struct Pipelines {
     format: wgpu::TextureFormat,
-    pipeline: wgpu::RenderPipeline,
+    /// The opaque donut surface.
+    base: wgpu::RenderPipeline,
+    /// The blended fur shells, one instance per layer.
+    fur: wgpu::RenderPipeline,
 }
 
 /// The depth buffer, recreated whenever the target is resized.
@@ -122,16 +192,27 @@ struct DepthTarget {
     view: wgpu::TextureView,
 }
 
+/// The multisampled color buffer, resolved into the swapchain every frame.
+struct MultisampleTarget {
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+    view: wgpu::TextureView,
+}
+
 /// Draws the donut model into a texture provided by a [`wgpu::Device`].
 pub struct DonutRenderer {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+    /// One normalized shell height per fur layer.
+    fur_layer_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
-    pipeline: Option<Pipeline>,
+    pipelines: Option<Pipelines>,
     depth: Option<DepthTarget>,
+    msaa: Option<MultisampleTarget>,
     mesh: gltf::Mesh,
 }
 
@@ -151,6 +232,16 @@ impl DonutRenderer {
             label: Some("Donut Index Buffer"),
             contents: bytemuck::cast_slice(&mesh.indices),
             usage: wgpu::BufferUsages::INDEX,
+        });
+
+        // One instance per fur shell, carrying the shell's normalized height.
+        let fur_layers = (1..=FUR_LAYERS)
+            .map(|layer| layer as f32 / FUR_LAYERS as f32)
+            .collect::<Vec<_>>();
+        let fur_layer_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Donut Fur Layer Buffer"),
+            contents: bytemuck::cast_slice(&fur_layers),
+            usage: wgpu::BufferUsages::VERTEX,
         });
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -185,11 +276,13 @@ impl DonutRenderer {
             vertex_buffer,
             index_buffer,
             index_count,
+            fur_layer_buffer,
             uniform_buffer,
             bind_group_layout,
             bind_group,
-            pipeline: None,
+            pipelines: None,
             depth: None,
+            msaa: None,
             mesh,
         })
     }
@@ -216,19 +309,18 @@ impl DonutRenderer {
             return;
         }
 
-        if self.pipeline.as_ref().map(|pipeline| pipeline.format) != Some(format) {
-            self.pipeline = Some(Pipeline {
-                format,
-                pipeline: create_pipeline(device, &self.bind_group_layout, format),
-            });
+        if self.pipelines.as_ref().map(|pipeline| pipeline.format) != Some(format) {
+            self.pipelines = Some(create_pipelines(device, &self.bind_group_layout, format));
         }
         self.ensure_depth_target(device, width, height);
+        self.ensure_multisample_target(device, width, height, format);
 
         let uniforms = Uniforms::new(&self.mesh, width as f32 / height as f32, spin);
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
-        let pipeline = &self.pipeline.as_ref().expect("created above").pipeline;
+        let pipelines = self.pipelines.as_ref().expect("created above");
         let depth_view = &self.depth.as_ref().expect("created above").view;
+        let multisample_view = &self.msaa.as_ref().expect("created above").view;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Donut Command Encoder"),
@@ -237,12 +329,14 @@ impl DonutRenderer {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Donut Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
+                    // Render into the multisampled buffer and resolve it into
+                    // the swapchain texture.
+                    view: multisample_view,
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: Some(view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(CLEAR_COLOR),
-                        store: wgpu::StoreOp::Store,
+                        store: wgpu::StoreOp::Discard,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -258,11 +352,18 @@ impl DonutRenderer {
                 multiview_mask: None,
             });
 
-            render_pass.set_pipeline(pipeline);
             render_pass.set_bind_group(0, &self.bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
+            // The opaque body first, so it writes the depth buffer.
+            render_pass.set_pipeline(&pipelines.base);
             render_pass.draw_indexed(0..self.index_count, 0, 0..1);
+
+            // Then every fur shell, back to front, blended over the body.
+            render_pass.set_pipeline(&pipelines.fur);
+            render_pass.set_vertex_buffer(1, self.fur_layer_buffer.slice(..));
+            render_pass.draw_indexed(0..self.index_count, 0, 0..FUR_LAYERS);
         }
         queue.submit([encoder.finish()]);
     }
@@ -285,7 +386,7 @@ impl DonutRenderer {
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count: MSAA_SAMPLES,
             dimension: wgpu::TextureDimension::D2,
             format: DEPTH_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -297,14 +398,50 @@ impl DonutRenderer {
             view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
         });
     }
+
+    /// Make sure the multisampled color buffer matches the target size and format.
+    fn ensure_multisample_target(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) {
+        if self.msaa.as_ref().is_some_and(|target| {
+            target.width == width && target.height == height && target.format == format
+        }) {
+            return;
+        }
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Donut MSAA Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: MSAA_SAMPLES,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        self.msaa = Some(MultisampleTarget {
+            width,
+            height,
+            format,
+            view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
+        });
+    }
 }
 
-/// Build the render pipeline for a color target in `format`.
-fn create_pipeline(
+/// Build the render pipelines for a color target in `format`.
+fn create_pipelines(
     device: &wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,
     format: wgpu::TextureFormat,
-) -> wgpu::RenderPipeline {
+) -> Pipelines {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Donut Shader"),
         source: wgpu::ShaderSource::Wgsl(include_str!("donut.wgsl").into()),
@@ -312,24 +449,31 @@ fn create_pipeline(
 
     const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
         wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
+    const LAYER_ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![3 => Float32];
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Donut Pipeline Layout"),
         bind_group_layouts: &[Some(bind_group_layout)],
         immediate_size: 0,
     });
+    let vertex_layout = wgpu::VertexBufferLayout {
+        array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &ATTRIBUTES,
+    };
+    let layer_layout = wgpu::VertexBufferLayout {
+        array_stride: size_of::<f32>() as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &LAYER_ATTRIBUTES,
+    };
 
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Donut Render Pipeline"),
+    let base = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Donut Base Pipeline"),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &ATTRIBUTES,
-            })],
+            buffers: &[Some(vertex_layout.clone())],
             compilation_options: Default::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -358,8 +502,56 @@ fn create_pipeline(
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         }),
-        multisample: wgpu::MultisampleState::default(),
+        multisample: wgpu::MultisampleState {
+            count: MSAA_SAMPLES,
+            ..Default::default()
+        },
         multiview_mask: None,
         cache: None,
-    })
+    });
+
+    let fur = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Donut Fur Pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_fur"),
+            buffers: &[Some(vertex_layout), Some(layer_layout)],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_fur"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: MSAA_SAMPLES,
+            ..Default::default()
+        },
+        multiview_mask: None,
+        cache: None,
+    });
+
+    Pipelines { format, base, fur }
 }
