@@ -56,10 +56,16 @@ impl Component for MainModel {
             .await?;
         let renderer = DonutRenderer::new(&device)?;
 
+        let monitor = Monitor::all()?;
+        let size = monitor
+            .first()
+            .map(|m| m.region().size)
+            .unwrap_or(Size::new(1920., 1080.));
+
         init! {
             window: Window = (()) => {
                 text: "MiniBurner",
-                size: Size::new(800.0, 600.0),
+                size: size,
 
                 #[cfg(all(windows, feature = "winui"))]
                 backdrop: Backdrop::Mica,
