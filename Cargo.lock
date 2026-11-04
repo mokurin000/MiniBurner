@@ -3341,8 +3341,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "winio"
-version = "0.13.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.13.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f444eca1c24c03ba94e8250c5ab1e84da0da611e3217b201bfbfcfdfd255162e"
 dependencies = [
  "android-activity",
  "cfg-if",
@@ -3371,12 +3372,14 @@ dependencies = [
 [[package]]
 name = "winio-callback"
 version = "0.2.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6e36c8d1e94e1f4620ceed9d1bef07a4ddbc4ebe7fb3524b5cbc0796a938160"
 
 [[package]]
 name = "winio-elm"
-version = "0.7.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.7.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0f4bcdd222462df6706a3ae5708ead7d51cdf3ac02863cd4fac422945ab1b04"
 dependencies = [
  "async-stream",
  "futures-util",
@@ -3392,7 +3395,8 @@ dependencies = [
 [[package]]
 name = "winio-handle"
 version = "0.8.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0a0fdb52ed99dc0ed9ec59aef6825d5245398287bbc5caeef14fe19ee8a686a"
 dependencies = [
  "cfg-if",
  "gtk4",
@@ -3408,7 +3412,8 @@ dependencies = [
 [[package]]
 name = "winio-layout"
 version = "0.4.0-beta.1"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f634b67d102a418bdc95f08bcb2f008b0bf8b6cdf13b93e667f652a167b73ed2"
 dependencies = [
  "paste",
  "taffy",
@@ -3418,8 +3423,9 @@ dependencies = [
 
 [[package]]
 name = "winio-pollable"
-version = "0.6.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.6.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e05c9a5bd28deecf37daeb6accea51b5949d7f54e247269ec7dc2f0ac428dcfa"
 dependencies = [
  "futures-util",
  "scoped-tls",
@@ -3428,8 +3434,9 @@ dependencies = [
 
 [[package]]
 name = "winio-primitive"
-version = "0.3.0-beta.1"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.3.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e003f09e7e056026fc2a321ce554c3f535c66072d7f22b143a10d4f98a8c0f0"
 dependencies = [
  "bitflags",
  "bytemuck",
@@ -3452,8 +3459,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-android"
-version = "0.2.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.2.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acea3ea8ed9e8f2bcb08d6e3c9f008fbadceac4d43afa45653fd205cef546a62"
 dependencies = [
  "android-activity",
  "base64",
@@ -3479,8 +3487,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-app-kit"
-version = "0.7.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.7.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1521a57d35c8d59c5cc860689b49f56ce8e6d7c30f4ad06213c84baab07f96d"
 dependencies = [
  "arrayvec",
  "block2",
@@ -3510,8 +3519,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-apple-common"
-version = "0.2.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.2.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a476bae611f53ef30a3c9e0a17aed8f54d19d8e6334e6f81f3a69611e453e7a"
 dependencies = [
  "block2",
  "compio-log",
@@ -3530,8 +3540,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-gtk"
-version = "0.7.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.7.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "265f6fffa9a3669cac47b3c309d0f6195d11d44569350f5fdb50ee5a4e6f62f8"
 dependencies = [
  "bytemuck",
  "compio",
@@ -3557,8 +3568,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-qt"
-version = "0.7.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.7.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f8c3ec9d8f8a5b4f493a62e049fb780d9ca13c11667c5e1aa3ad1a928788f4e"
 dependencies = [
  "bitflags",
  "compio",
@@ -3585,8 +3597,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-stub"
-version = "0.2.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.2.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e8aa73d9af6388b72a2953e8666188ece61e37122015ddba775ca54e41880a8"
 dependencies = [
  "compio",
  "futures-util",
@@ -3600,8 +3613,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-ui-kit"
-version = "0.2.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.2.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "944ff79cc1aa6f8ad3688531b102c862d95689aa0502cc79bce009f0f470e82d"
 dependencies = [
  "block2",
  "compio",
@@ -3632,8 +3646,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-win32"
-version = "0.7.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.7.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67ff4960ff3275475c443828960571f0fc141f83e861a01e44b032309569f4fb"
 dependencies = [
  "arrayvec",
  "compio",
@@ -3660,8 +3675,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-windows-common"
-version = "0.8.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.8.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22cf9996475357d14d76220c4a3d17b66f7bdd52621db80c5557d0fa438a23b0"
 dependencies = [
  "bytemuck",
  "cfg-if",
@@ -3690,8 +3706,9 @@ dependencies = [
 
 [[package]]
 name = "winio-ui-winui"
-version = "0.7.0-beta.2"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.7.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d430405852e0347595ab2a1656c109f180e8fd59565fa57eb88b393925f8d544"
 dependencies = [
  "async-stream",
  "compio",
@@ -3720,8 +3737,9 @@ dependencies = [
 
 [[package]]
 name = "winio-wgpu"
-version = "0.1.0"
-source = "git+https://github.com/compio-rs/winio?rev=725daf9afae5cce713e4e0daef2b992347292702#725daf9afae5cce713e4e0daef2b992347292702"
+version = "0.1.0-beta.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af7f9236db8419ba377291441cb869b2aadf4e56483a9898e3e54c522f123c9"
 dependencies = [
  "ash",
  "wgpu",

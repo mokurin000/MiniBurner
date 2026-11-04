@@ -21,7 +21,7 @@ bytemuck = { version = "1.25", features = ["derive"] }
 wgpu = { version = "30", default-features = false, features = ["wgsl"] }
 
 # GUI
-winio = { git = "https://github.com/compio-rs/winio", rev = "725daf9afae5cce713e4e0daef2b992347292702", features = [
+winio = { version = "0.13.0-beta.3", features = [
     "win32-dark-mode",
     # The CBS 1.6 variant of winui3 was meant for windows system apps
     # We don't assume users have installed winui3 through any apps
