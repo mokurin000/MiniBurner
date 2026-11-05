@@ -43,7 +43,7 @@ jobs:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/30.0.16248370
           ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/30.0.16248370
         run: |
-          cargo ndk -t ${{ matrix.abi }} -o android/app/src/main/jniLibs rustc --crate-type cdylib --lib --release
+          cargo ndk --link-builtins -t ${{ matrix.abi }} -o android/app/src/main/jniLibs rustc --crate-type cdylib --lib --release
 
       - name: 📝 Configure local.properties
         run: |
