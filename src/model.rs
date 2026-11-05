@@ -11,7 +11,13 @@ use crate::donut::DonutRenderer;
 /// How far the donut spins around the screen's Z axis on every tick.
 const SPIN_DEGREES_PER_TICK: f32 = 6.0;
 /// Interval between two rotation ticks.
-const TICK_INTERVAL: Duration = Duration::from_millis(10);
+/// Limit to 60 FPS for desktop and 30 FPS for mobile.
+const TICK_INTERVAL: Duration = Duration::from_micros(
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    33333,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    16666,
+);
 
 /// Selectable fur quality tiers: label and number of fur shells.
 const FUR_QUALITY: [(&str, u32); 4] = [
