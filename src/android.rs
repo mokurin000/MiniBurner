@@ -16,7 +16,7 @@ fn android_main(app: AndroidApp) {
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
-                .with_max_level(LevelFilter::INFO),
+                .with_filter(LevelFilter::INFO),
         )
         .try_init()
         .ok();
