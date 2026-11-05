@@ -1,5 +1,6 @@
 //! Android entry point for the QR code generator app.
 
+use tracing_subscriber::Layer;
 use winio::prelude::*;
 
 use crate::model::MainModel;
@@ -16,7 +17,7 @@ fn android_main(app: AndroidApp) {
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
-                .with_filter(LevelFilter::INFO),
+                .with_filter(LevelFilter::DEBUG),
         )
         .try_init()
         .ok();
