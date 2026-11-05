@@ -26,22 +26,15 @@ winio = { version = "0.13.0-beta.3", features = [
     # The CBS 1.6 variant of winui3 was meant for windows system apps
     # We don't assume users have installed winui3 through any apps
     "winui-enable-cbs",
-    # Needed by `compio::runtime::spawn` to drive the donut animation.
-    "compio-compat",
     "wgpu",
     "enable_log",
 ], default-features = false }
-
-# Must match the compio version winio builds its runtime with, so that
-# `compio::runtime::spawn` can schedule the rotation ticker on it.
-compio = { version = "0.20.0-beta.1", features = ["runtime", "time"] }
 compio-log = "0.3.0-beta.1"
 
 tracing-subscriber = { version = "0.3", default-features = false, features = [
     "ansi",
     "fmt",
     "std",
-    "env-filter",
 ] }
 
 [target.'cfg(target_os = "android")'.dependencies]

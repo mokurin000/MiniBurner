@@ -40,6 +40,8 @@ pub struct MainModel {
     start_button: Child<Button>,
     /// Skip the CPU burn
     skip_cpu_burn: Child<CheckBox>,
+    /// Fixed interval timer
+    timer: Child<Timer>,
 
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -112,6 +114,7 @@ impl Component for MainModel {
             start_button: Button = (&window) => {
                 text: "Start",
             },
+            timer: Timer = (TICK_INTERVAL) => {}
         }
 
         canvas.bind(&instance, &adapter);
@@ -128,6 +131,7 @@ impl Component for MainModel {
             skip_cpu_burn,
             device,
             queue,
+            timer,
             renderer: None,
             burning: false,
             clockwise: true,
@@ -151,7 +155,10 @@ impl Component for MainModel {
             self.skip_cpu_burn => {},
             self.start_button => {
                 ButtonEvent::Click => MainMessage::Start,
-            }
+            },
+            self.timer => {
+                TimerEvent::Tick => MainMessage::Tick,
+            },
         }
     }
 
@@ -163,6 +170,7 @@ impl Component for MainModel {
             self.quality,
             self.start_button,
             self.skip_cpu_burn,
+            self.timer,
         )
     }
 
@@ -195,7 +203,8 @@ impl Component for MainModel {
                 if !self.skip_cpu_burn.is_checked()? {
                     spawn_cpu_burners();
                 }
-                spawn_rotation_ticker(sender.clone());
+                Timer::start(&mut self.timer)?;
+
                 Ok(true)
             }
             MainMessage::Tick => {
@@ -327,16 +336,4 @@ fn spawn_cpu_burners() {
             }
         });
     }
-}
-
-/// Post a [`MainMessage::Tick`] every [`TICK_INTERVAL`] on the compio runtime.
-fn spawn_rotation_ticker(sender: ComponentSender<MainModel>) {
-    compio::runtime::spawn(async move {
-        let mut interval = compio::time::interval(TICK_INTERVAL);
-        loop {
-            interval.tick().await;
-            sender.post(MainMessage::Tick);
-        }
-    })
-    .detach();
 }
