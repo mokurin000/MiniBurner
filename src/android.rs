@@ -1,6 +1,7 @@
 //! Android entry point for the QR code generator app.
 
-use tracing_subscriber::Layer;
+use compio_log::metadata::LevelFilter;
+use tracing_subscriber::prelude::*;
 use winio::prelude::*;
 
 use crate::model::MainModel;
