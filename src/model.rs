@@ -13,20 +13,39 @@ const SPIN_DEGREES_PER_TICK: f32 = 6.0;
 /// Interval between two rotation ticks.
 const TICK_INTERVAL: Duration = Duration::from_millis(10);
 
+/// Selectable fur quality tiers: label and number of fur shells.
+const FUR_QUALITY: [(&str, u32); 4] = [
+    ("Low End", 128),
+    ("Medium", 256),
+    ("High End", 768),
+    ("Extreme", 1024),
+];
+/// Quality tier selected when the window opens.
+const DEFAULT_FUR_QUALITY: usize = 2;
+
 /// Root component of the application UI.
 pub struct MainModel {
     /// The main application window.
     window: Child<Window>,
     canvas: Child<WgpuCanvas>,
+    /// Fur quality selector, shown until the burn starts.
+    quality: Child<ComboBox>,
+    /// Starts the CPU and GPU burn.
+    start_button: Child<Button>,
 
     device: wgpu::Device,
     queue: wgpu::Queue,
-    renderer: DonutRenderer,
+    /// Created when the burn starts; it also gates all GPU rendering.
+    renderer: Option<DonutRenderer>,
+    /// Whether the CPU and GPU burn is running.
+    burning: bool,
     /// Rotation of the donut around the screen's Z axis, in radians.
     spin: f32,
 }
 
 pub enum MainMessage {
+    /// Start the CPU and GPU burn with the selected fur quality
+    Start,
     /// Advance the donut rotation by one tick
     Tick,
     /// Main window has been resized
@@ -43,7 +62,7 @@ impl Component for MainModel {
     type Init<'a> = ();
     type Message = MainMessage;
 
-    async fn init(_init: Self::Init<'_>, sender: &ComponentSender<Self>) -> Result<Self> {
+    async fn init(_init: Self::Init<'_>, _sender: &ComponentSender<Self>) -> Result<Self> {
         // Note: color-eyre does not enable VT100 on Windows on its own
         color_eyre::install()?;
 
@@ -54,13 +73,13 @@ impl Component for MainModel {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())
             .await?;
-        let renderer = DonutRenderer::new(&device)?;
 
         let monitor = Monitor::all()?;
         let size = monitor
             .first()
             .map(|m| m.region().size)
             .unwrap_or(Size::new(1920., 1080.));
+        let quality_labels = FUR_QUALITY.map(|(label, _)| label);
 
         init! {
             window: Window = (()) => {
@@ -71,46 +90,31 @@ impl Component for MainModel {
                 backdrop: Backdrop::Mica,
             },
             canvas: WgpuCanvas = (&window),
+            quality: ComboBox = (&window) => {
+                items: quality_labels,
+                selection: DEFAULT_FUR_QUALITY,
+            },
+            start_button: Button = (&window) => {
+                text: "Start",
+            },
         }
+
         canvas.bind(&instance, &adapter);
         canvas.set_size(window.client_size()?)?;
+        // The canvas only comes up once the burn starts.
+        canvas.set_visible(false)?;
+        place_controls(window.client_size()?, &mut quality, &mut start_button)?;
         window.show()?;
-
-        // Drive the donut animation from the compio runtime.
-        spawn_rotation_ticker(sender.clone());
-
-        let _ = std::iter::once(|| {
-            #[repr(align(128))]
-            struct Aligned<T>(T);
-
-            // 256 KiB per thread
-            let mut buf = Aligned::<_>([0u8; 256 * 1024]);
-            SystemRng.fill_bytes(&mut buf.0);
-
-            loop {
-                // AVX2 has wider support than SHA-NI on the desktop CPU
-                #[cfg(target_arch = "x86_64")]
-                let mut digest = sha2::Sha512::new();
-                // SHA512 requires ARMv8.4-A or later (2019~2021)
-                // SHA256 requires ARMv8.0-A or later (2013~2014)
-                #[cfg(not(target_arch = "x86_64"))]
-                let mut digest = sha2::Sha256::new();
-
-                std::hint::black_box(digest.update(buf.0));
-                digest.finalize();
-            }
-        })
-        .cycle()
-        .take(num_cpus::get())
-        .map(std::thread::spawn)
-        .collect::<Vec<_>>();
 
         Ok(Self {
             window,
             canvas,
+            quality,
+            start_button,
             device,
             queue,
-            renderer,
+            renderer: None,
+            burning: false,
             spin: 0.0,
         })
     }
@@ -124,12 +128,17 @@ impl Component for MainModel {
                 WindowEvent::Close => MainMessage::Close,
                 WindowEvent::ThemeChanged => MainMessage::ThemeChanged,
             },
+            self.canvas => {},
+            self.quality => {},
+            self.start_button => {
+                ButtonEvent::Click => MainMessage::Start,
+            }
         }
     }
 
     async fn update_children(&mut self) -> Result<bool> {
         // update the window and functional children
-        update_children!(self.window, self.canvas)
+        update_children!(self.window, self.canvas, self.quality, self.start_button)
     }
 
     async fn update(
@@ -139,7 +148,33 @@ impl Component for MainModel {
     ) -> Result<bool> {
         // deal with custom messages
         match message {
+            MainMessage::Start => {
+                if self.burning {
+                    return Ok(false);
+                }
+
+                let selected = self.quality.selection()?.unwrap_or(DEFAULT_FUR_QUALITY);
+                let fur_layers = FUR_QUALITY
+                    .get(selected)
+                    .map(|(_, layers)| *layers)
+                    .unwrap_or(FUR_QUALITY[DEFAULT_FUR_QUALITY].1);
+
+                // Build the renderer first: if it fails, the UI stays usable.
+                self.renderer = Some(DonutRenderer::new(&self.device, fur_layers)?);
+                self.burning = true;
+
+                self.quality.set_visible(false)?;
+                self.start_button.set_visible(false)?;
+                self.canvas.set_visible(true)?;
+
+                spawn_cpu_burners();
+                spawn_rotation_ticker(sender.clone());
+                Ok(true)
+            }
             MainMessage::Tick => {
+                if !self.burning {
+                    return Ok(false);
+                }
                 self.spin = (self.spin + SPIN_DEGREES_PER_TICK.to_radians())
                     .rem_euclid(std::f32::consts::TAU);
                 Ok(true)
@@ -157,10 +192,15 @@ impl Component for MainModel {
 
     fn render(&mut self, _sender: &ComponentSender<Self>) -> Result<()> {
         let csize = self.window.client_size()?;
+        if csize.width <= 0.0 || csize.height <= 0.0 {
+            return Ok(());
+        }
         if self.canvas.size()? != csize {
             self.canvas.set_size(csize)?;
         }
-        if csize.width <= 0.0 || csize.height <= 0.0 {
+
+        if !self.burning {
+            place_controls(csize, &mut self.quality, &mut self.start_button)?;
             return Ok(());
         }
 
@@ -170,20 +210,78 @@ impl Component for MainModel {
             return Ok(());
         };
         let size = (frame.texture.width(), frame.texture.height());
-        self.renderer.render(
-            &self.device,
-            &self.queue,
-            &frame.view,
-            size,
-            frame.format,
-            self.spin,
-        );
+        self.renderer
+            .as_mut()
+            .expect("the renderer exists once the burn starts")
+            .render(
+                &self.device,
+                &self.queue,
+                &frame.view,
+                size,
+                frame.format,
+                self.spin,
+            );
         self.canvas.present(&self.queue)?;
         Ok(())
     }
 
     fn render_children(&mut self) -> Result<()> {
-        Ok(self.window.render()?)
+        self.window.render()?;
+        self.canvas.render()?;
+        self.quality.render()?;
+        self.start_button.render()?;
+        Ok(())
+    }
+}
+
+/// Center the pre-burn controls in the window's client area.
+fn place_controls(
+    csize: Size,
+    quality: &mut Child<ComboBox>,
+    start_button: &mut Child<Button>,
+) -> Result<()> {
+    let combo_size = Size::new(260.0, 32.0);
+    let button_size = Size::new(160.0, 40.0);
+    let combo_y = csize.height * 0.5 - 70.0;
+
+    quality.set_rect(Rect::new(
+        Point::new((csize.width - combo_size.width) * 0.5, combo_y),
+        combo_size,
+    ))?;
+    start_button.set_rect(Rect::new(
+        Point::new((csize.width - button_size.width) * 0.5, combo_y + 60.0),
+        button_size,
+    ))?;
+    Ok(())
+}
+
+/// Start one SHA burner thread per CPU core.
+///
+/// The thread handles are dropped on purpose: the burners detach and keep
+/// running for the rest of the process' lifetime.
+fn spawn_cpu_burners() {
+    for _ in 0..num_cpus::get() {
+        let _ = std::thread::spawn(|| {
+            #[repr(align(128))]
+            struct Aligned<T>(T);
+
+            // 256 KiB per thread
+            let mut buf = Aligned::<[u8; 256 * 1024]>([0u8; 256 * 1024]);
+            SystemRng.fill_bytes(&mut buf.0);
+
+            loop {
+                // AVX2 has wider support than SHA-NI on the desktop CPU
+                #[cfg(target_arch = "x86_64")]
+                let mut digest = sha2::Sha512::new();
+                // SHA512 requires ARMv8.4-A or later (2019~2021)
+                // SHA256 requires ARMv8.0-A or later (2013~2014)
+                #[cfg(not(target_arch = "x86_64"))]
+                let mut digest = sha2::Sha256::new();
+
+                std::hint::black_box(digest.update(buf.0));
+                digest.finalize();
+            }
+        });
     }
 }
 

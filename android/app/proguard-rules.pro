@@ -7,7 +7,7 @@
 -keep, includedescriptorclasses class androidx.activity.result.** { *; }
 
 # Button
-# -keep, includedescriptorclasses class com.google.android.material.button.** { *; }
+-keep, includedescriptorclasses class com.google.android.material.button.** { *; }
 
 # CheckBox
 # -keep, includedescriptorclasses class com.google.android.material.checkbox.** { *; }

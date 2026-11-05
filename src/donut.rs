@@ -66,9 +66,6 @@ const AMBIENT_COLOR: [f32; 3] = [0.10, 0.11, 0.13];
 const SHININESS: f32 = 48.0;
 /// How strong the light's specular highlight is.
 const SPECULAR_STRENGTH: f32 = 0.6;
-/// Number of fur shells drawn on top of the donut. Each shell is a full copy
-/// of the mesh, so this is the main GPU load of the app.
-const FUR_LAYERS: u32 = 1024;
 /// Length of the fur along the surface normal, in model units.
 const FUR_LENGTH: f32 = 0.24;
 /// Number of fur strands per UV unit.
@@ -207,6 +204,8 @@ pub struct DonutRenderer {
     index_count: u32,
     /// One normalized shell height per fur layer.
     fur_layer_buffer: wgpu::Buffer,
+    /// Number of fur shells drawn over the body; this is the main GPU load.
+    fur_layers: u32,
     uniform_buffer: wgpu::Buffer,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -218,7 +217,16 @@ pub struct DonutRenderer {
 
 impl DonutRenderer {
     /// Upload the embedded donut model and build its resources.
-    pub fn new(device: &wgpu::Device) -> Result<Self> {
+    ///
+    /// `fur_layers` is the number of fur shells drawn over the body; it is the
+    /// main GPU load of the app.
+    pub fn new(device: &wgpu::Device, fur_layers: u32) -> Result<Self> {
+        if fur_layers == 0 {
+            return Err(color_eyre::eyre::eyre!(
+                "the donut needs at least one fur layer"
+            ));
+        }
+
         let mesh = gltf::load_glb(MODEL_GLB)?;
         let index_count = u32::try_from(mesh.indices.len())
             .map_err(|_| color_eyre::eyre::eyre!("the donut model has too many indices"))?;
@@ -235,12 +243,12 @@ impl DonutRenderer {
         });
 
         // One instance per fur shell, carrying the shell's normalized height.
-        let fur_layers = (1..=FUR_LAYERS)
-            .map(|layer| layer as f32 / FUR_LAYERS as f32)
+        let shells = (1..=fur_layers)
+            .map(|layer| layer as f32 / fur_layers as f32)
             .collect::<Vec<_>>();
         let fur_layer_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Donut Fur Layer Buffer"),
-            contents: bytemuck::cast_slice(&fur_layers),
+            contents: bytemuck::cast_slice(&shells),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
@@ -277,6 +285,7 @@ impl DonutRenderer {
             index_buffer,
             index_count,
             fur_layer_buffer,
+            fur_layers,
             uniform_buffer,
             bind_group_layout,
             bind_group,
@@ -363,7 +372,7 @@ impl DonutRenderer {
             // Then every fur shell, back to front, blended over the body.
             render_pass.set_pipeline(&pipelines.fur);
             render_pass.set_vertex_buffer(1, self.fur_layer_buffer.slice(..));
-            render_pass.draw_indexed(0..self.index_count, 0, 0..FUR_LAYERS);
+            render_pass.draw_indexed(0..self.index_count, 0, 0..self.fur_layers);
         }
         queue.submit([encoder.finish()]);
     }
