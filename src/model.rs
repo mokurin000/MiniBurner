@@ -230,7 +230,7 @@ impl Component for MainModel {
             return Ok(());
         }
         if self.canvas.size()? != csize {
-            self.canvas.set_size(csize)?;
+            self.canvas.set_rect(csize.into())?;
         }
 
         if !self.burning {
