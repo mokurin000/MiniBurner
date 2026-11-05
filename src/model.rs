@@ -91,7 +91,7 @@ impl Component for MainModel {
                 #[cfg(all(windows, feature = "winui"))]
                 backdrop: Backdrop::Mica,
             },
-            gpu_only: CheckBox = (&window) => {
+            skip_cpu_burn: CheckBox = (&window) => {
                 text: "Skip CPU Burn",
             },
             canvas: WgpuCanvas = (&window),
@@ -115,7 +115,7 @@ impl Component for MainModel {
             canvas,
             quality,
             start_button,
-            skip_cpu_burn: gpu_only,
+            skip_cpu_burn,
             device,
             queue,
             renderer: None,
@@ -144,7 +144,13 @@ impl Component for MainModel {
 
     async fn update_children(&mut self) -> Result<bool> {
         // update the window and functional children
-        update_children!(self.window, self.canvas, self.quality, self.start_button)
+        update_children!(
+            self.window,
+            self.canvas,
+            self.quality,
+            self.start_button,
+            self.skip_cpu_burn,
+        )
     }
 
     async fn update(
@@ -254,9 +260,11 @@ impl Component for MainModel {
 
     fn render_children(&mut self) -> Result<()> {
         self.window.render()?;
-        self.canvas.render()?;
-        self.quality.render()?;
-        self.start_button.render()?;
+        if !self.burning {
+            self.quality.render()?;
+            self.skip_cpu_burn.render()?;
+            self.start_button.render()?;
+        }
         Ok(())
     }
 }
