@@ -32,6 +32,8 @@ pub struct MainModel {
     quality: Child<ComboBox>,
     /// Starts the CPU and GPU burn.
     start_button: Child<Button>,
+    /// Skip the CPU burn
+    skip_cpu_burn: Child<CheckBox>,
 
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -89,6 +91,9 @@ impl Component for MainModel {
                 #[cfg(all(windows, feature = "winui"))]
                 backdrop: Backdrop::Mica,
             },
+            gpu_only: CheckBox = (&window) => {
+                text: "Skip CPU Burn",
+            },
             canvas: WgpuCanvas = (&window),
             quality: ComboBox = (&window) => {
                 items: quality_labels,
@@ -103,7 +108,6 @@ impl Component for MainModel {
         canvas.set_size(window.client_size()?)?;
         // The canvas only comes up once the burn starts.
         canvas.set_visible(false)?;
-        place_controls(window.client_size()?, &mut quality, &mut start_button)?;
         window.show()?;
 
         Ok(Self {
@@ -111,6 +115,7 @@ impl Component for MainModel {
             canvas,
             quality,
             start_button,
+            skip_cpu_burn: gpu_only,
             device,
             queue,
             renderer: None,
@@ -130,6 +135,7 @@ impl Component for MainModel {
             },
             self.canvas => {},
             self.quality => {},
+            self.skip_cpu_burn => {},
             self.start_button => {
                 ButtonEvent::Click => MainMessage::Start,
             }
@@ -167,7 +173,9 @@ impl Component for MainModel {
                 self.start_button.set_visible(false)?;
                 self.canvas.set_visible(true)?;
 
-                spawn_cpu_burners();
+                if !self.skip_cpu_burn.is_checked()? {
+                    spawn_cpu_burners();
+                }
                 spawn_rotation_ticker(sender.clone());
                 Ok(true)
             }
@@ -200,7 +208,26 @@ impl Component for MainModel {
         }
 
         if !self.burning {
-            place_controls(csize, &mut self.quality, &mut self.start_button)?;
+            let mut inner_layout = layout! {
+                StackPanel::new(Orient::Vertical),
+                self.quality => {
+                    margin: Margin::new_all_same(2.0),
+                },
+                self.skip_cpu_burn => {
+                    margin: Margin::new_all_same(2.0),
+                },
+                self.start_button => {
+                    margin: Margin::new_all_same(2.0),
+                },
+            };
+            let mut layout = layout! {
+                Grid::new(vec![GridLength::Stretch(1.0)], vec![GridLength::Stretch(1.0)]),
+                inner_layout => {
+                    valign: VAlign::Center,
+                    halign: HAlign::Center,
+                },
+            };
+            layout.set_size(csize)?;
             return Ok(());
         }
 
@@ -232,27 +259,6 @@ impl Component for MainModel {
         self.start_button.render()?;
         Ok(())
     }
-}
-
-/// Center the pre-burn controls in the window's client area.
-fn place_controls(
-    csize: Size,
-    quality: &mut Child<ComboBox>,
-    start_button: &mut Child<Button>,
-) -> Result<()> {
-    let combo_size = Size::new(260.0, 32.0);
-    let button_size = Size::new(160.0, 40.0);
-    let combo_y = csize.height * 0.5 - 70.0;
-
-    quality.set_rect(Rect::new(
-        Point::new((csize.width - combo_size.width) * 0.5, combo_y),
-        combo_size,
-    ))?;
-    start_button.set_rect(Rect::new(
-        Point::new((csize.width - button_size.width) * 0.5, combo_y + 60.0),
-        button_size,
-    ))?;
-    Ok(())
 }
 
 /// Start one SHA burner thread per CPU core.

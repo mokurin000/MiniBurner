@@ -10,7 +10,7 @@
 -keep, includedescriptorclasses class com.google.android.material.button.** { *; }
 
 # CheckBox
-# -keep, includedescriptorclasses class com.google.android.material.checkbox.** { *; }
+-keep, includedescriptorclasses class com.google.android.material.checkbox.** { *; }
 
 # RadioButton
 # -keep, includedescriptorclasses class com.google.android.material.radiobutton.** { *; }
