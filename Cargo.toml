@@ -29,10 +29,20 @@ winio = { version = "0.13.0-beta.3", features = [
     # Needed by `compio::runtime::spawn` to drive the donut animation.
     "compio-compat",
     "wgpu",
+    "enable_log",
 ], default-features = false }
+
 # Must match the compio version winio builds its runtime with, so that
 # `compio::runtime::spawn` can schedule the rotation ticker on it.
 compio = { version = "0.20.0-beta.1", features = ["runtime", "time"] }
+compio-log = "0.3.0-beta.1"
+
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "ansi",
+    "fmt",
+    "std",
+    "env-filter",
+] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 # If you need to make additional JNI calls, you can use:
@@ -41,6 +51,7 @@ compio = { version = "0.20.0-beta.1", features = ["runtime", "time"] }
 #
 # Always use `jni::vm::JavaVM::singleton` to obtain the JVM handle.
 # jni = "0.22"
+tracing_android_trace = "0.1.0"
 
 [lib]
 # Required by `android/app/src/java/MainActivity.java`.

@@ -1,6 +1,6 @@
 //! Main GUI component for the QR code generator.
 use std::random::{Rng as _, SystemRng};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sha2::Digest;
 use winio::prelude::*;
@@ -259,9 +259,13 @@ impl Component for MainModel {
 
         // Render the donut into the canvas' swapchain texture, then hand the
         // frame over to the widget.
+        let time = Instant::now();
         let Some(frame) = self.canvas.acquire(&self.device) else {
             return Ok(());
         };
+
+        compio_log::debug!("acquire frame: cost {}ms", time.elapsed().as_millis());
+
         let size = (frame.texture.width(), frame.texture.height());
         self.renderer
             .as_mut()
@@ -322,8 +326,9 @@ fn spawn_cpu_burners() {
 /// Post a [`MainMessage::Tick`] every [`TICK_INTERVAL`] on the compio runtime.
 fn spawn_rotation_ticker(sender: ComponentSender<MainModel>) {
     compio::runtime::spawn(async move {
+        let mut interval = compio::time::interval(TICK_INTERVAL);
         loop {
-            compio::time::sleep(TICK_INTERVAL).await;
+            interval.tick().await;
             sender.post(MainMessage::Tick);
         }
     })
