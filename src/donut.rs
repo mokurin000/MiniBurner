@@ -19,6 +19,8 @@
 //! Rendering happens into a 4x multisampled target that is resolved into the
 //! swapchain texture, which smooths the silhouette and adds more GPU work.
 
+use std::time::{Duration, Instant};
+
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
@@ -83,6 +85,67 @@ const CLEAR_COLOR: wgpu::Color = wgpu::Color {
     b: 0.059,
     a: 1.0,
 };
+
+/// Seconds between two frame-rate measurements.
+const FPS_WINDOW: Duration = Duration::from_secs(1);
+/// Number of vertices the frame-rate overlay buffer can hold.
+const HUD_CAPACITY: usize = 4096;
+/// Size of one font pixel of the frame-rate overlay, in pixels.
+const HUD_SCALE: f32 = 4.0;
+/// Color of the frame-rate text.
+const HUD_TEXT_COLOR: [f32; 4] = [1.0, 0.86, 0.3, 0.95];
+/// Color of the panel behind the frame-rate text.
+const HUD_PANEL_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.45];
+/// 5x7 bitmap font: digits `0`-`9` followed by `F`, `P` and `S`.
+const HUD_FONT: [[u8; 7]; 13] = [
+    [
+        0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110,
+    ],
+    [
+        0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110,
+    ],
+    [
+        0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111,
+    ],
+    [
+        0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110,
+    ],
+    [
+        0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010,
+    ],
+    [
+        0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110,
+    ],
+    [
+        0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110,
+    ],
+    [
+        0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000,
+    ],
+    [
+        0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110,
+    ],
+    [
+        0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100,
+    ],
+    [
+        0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000,
+    ],
+    [
+        0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000,
+    ],
+    [
+        0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110,
+    ],
+];
+
+/// A vertex of the frame-rate overlay, already in clip space.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct HudVertex {
+    position: [f32; 2],
+    color: [f32; 4],
+}
 
 /// Uniform block shared with `donut.wgsl`.
 #[repr(C)]
@@ -180,6 +243,8 @@ struct Pipelines {
     base: wgpu::RenderPipeline,
     /// The blended fur shells, one instance per layer.
     fur: wgpu::RenderPipeline,
+    /// The frame-rate overlay.
+    hud: wgpu::RenderPipeline,
 }
 
 /// The depth buffer, recreated whenever the target is resized.
@@ -213,6 +278,18 @@ pub struct DonutRenderer {
     depth: Option<DepthTarget>,
     msaa: Option<MultisampleTarget>,
     mesh: gltf::Mesh,
+    /// Vertices of the frame-rate overlay, rebuilt when the rate changes.
+    hud_buffer: wgpu::Buffer,
+    hud_vertices: Vec<HudVertex>,
+    hud_vertex_count: u32,
+    /// The target size the HUD vertices were built for.
+    hud_size: (u32, u32),
+    hud_dirty: bool,
+    /// Frames submitted since the last measurement of the frame rate.
+    frames: u32,
+    /// The last measured, actually submitted frames per second.
+    fps: u32,
+    fps_start: Instant,
 }
 
 impl DonutRenderer {
@@ -280,6 +357,13 @@ impl DonutRenderer {
             }],
         });
 
+        let hud_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Donut HUD Buffer"),
+            size: (HUD_CAPACITY * size_of::<HudVertex>()) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Ok(Self {
             vertex_buffer,
             index_buffer,
@@ -293,6 +377,14 @@ impl DonutRenderer {
             depth: None,
             msaa: None,
             mesh,
+            hud_buffer,
+            hud_vertices: Vec::with_capacity(HUD_CAPACITY),
+            hud_vertex_count: 0,
+            hud_size: (0, 0),
+            hud_dirty: true,
+            frames: 0,
+            fps: 0,
+            fps_start: Instant::now(),
         })
     }
 
@@ -318,6 +410,8 @@ impl DonutRenderer {
             return;
         }
 
+        self.tick_fps_counter();
+
         if self.pipelines.as_ref().map(|pipeline| pipeline.format) != Some(format) {
             self.pipelines = Some(create_pipelines(device, &self.bind_group_layout, format));
         }
@@ -326,6 +420,17 @@ impl DonutRenderer {
 
         let uniforms = Uniforms::new(&self.mesh, width as f32 / height as f32, spin);
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+
+        if self.hud_dirty || self.hud_size != (width, height) {
+            self.rebuild_hud(width, height);
+            queue.write_buffer(
+                &self.hud_buffer,
+                0,
+                bytemuck::cast_slice(&self.hud_vertices),
+            );
+            self.hud_size = (width, height);
+            self.hud_dirty = false;
+        }
 
         let pipelines = self.pipelines.as_ref().expect("created above");
         let depth_view = &self.depth.as_ref().expect("created above").view;
@@ -373,8 +478,77 @@ impl DonutRenderer {
             render_pass.set_pipeline(&pipelines.fur);
             render_pass.set_vertex_buffer(1, self.fur_layer_buffer.slice(..));
             render_pass.draw_indexed(0..self.index_count, 0, 0..self.fur_layers);
+
+            // Finally the frame-rate overlay, ignoring the depth buffer.
+            render_pass.set_pipeline(&pipelines.hud);
+            render_pass.set_vertex_buffer(0, self.hud_buffer.slice(..));
+            render_pass.draw(0..self.hud_vertex_count, 0..1);
         }
         queue.submit([encoder.finish()]);
+        self.frames += 1;
+    }
+
+    /// Recompute the displayed frame rate once per [`FPS_WINDOW`].
+    fn tick_fps_counter(&mut self) {
+        let elapsed = self.fps_start.elapsed();
+        if elapsed >= FPS_WINDOW {
+            self.fps = (self.frames as f32 / elapsed.as_secs_f32()).round() as u32;
+            self.frames = 0;
+            self.fps_start = Instant::now();
+            self.hud_dirty = true;
+        }
+    }
+
+    /// Rebuild the frame-rate overlay for a target of `width` x `height` pixels.
+    fn rebuild_hud(&mut self, width: u32, height: u32) {
+        self.hud_vertices.clear();
+
+        let text = format!("FPS {}", self.fps);
+        let scale = HUD_SCALE;
+        let glyph_width = 5.0 * scale;
+        let glyph_height = 7.0 * scale;
+        let spacing = scale;
+        let margin = 16.0;
+        let padding = 10.0;
+        let text_width = text.chars().count() as f32 * (glyph_width + spacing) - spacing;
+
+        push_hud_quad(
+            &mut self.hud_vertices,
+            width,
+            height,
+            margin,
+            margin,
+            margin + text_width + padding * 2.0,
+            margin + glyph_height + padding * 2.0,
+            HUD_PANEL_COLOR,
+        );
+
+        for (index, character) in text.chars().enumerate() {
+            let glyph = hud_glyph(character);
+            let origin_x = margin + padding + index as f32 * (glyph_width + spacing);
+            let origin_y = margin + padding;
+            for (row, bits) in glyph.iter().enumerate() {
+                for column in 0..5 {
+                    if bits & (1 << (4 - column)) == 0 {
+                        continue;
+                    }
+                    let x = origin_x + column as f32 * scale;
+                    let y = origin_y + row as f32 * scale;
+                    push_hud_quad(
+                        &mut self.hud_vertices,
+                        width,
+                        height,
+                        x,
+                        y,
+                        x + scale,
+                        y + scale,
+                        HUD_TEXT_COLOR,
+                    );
+                }
+            }
+        }
+
+        self.hud_vertex_count = self.hud_vertices.len() as u32;
     }
 
     /// Make sure the depth buffer matches the size of the render target.
@@ -442,6 +616,49 @@ impl DonutRenderer {
             format,
             view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
         });
+    }
+}
+
+/// The 5x7 bitmap of a character of the HUD font.
+fn hud_glyph(character: char) -> [u8; 7] {
+    match character {
+        '0'..='9' => HUD_FONT[(character as u8 - b'0') as usize],
+        'F' => HUD_FONT[10],
+        'P' => HUD_FONT[11],
+        'S' => HUD_FONT[12],
+        _ => [0; 7],
+    }
+}
+
+/// Append a rectangle given in pixels to the HUD vertices, in clip space.
+fn push_hud_quad(
+    vertices: &mut Vec<HudVertex>,
+    width: u32,
+    height: u32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    color: [f32; 4],
+) {
+    let width = width as f32;
+    let height = height as f32;
+    let to_clip = |x: f32, y: f32| [x / width * 2.0 - 1.0, 1.0 - y / height * 2.0];
+
+    let top_left = to_clip(x0, y0);
+    let top_right = to_clip(x1, y0);
+    let bottom_right = to_clip(x1, y1);
+    let bottom_left = to_clip(x0, y1);
+
+    for position in [
+        top_left,
+        top_right,
+        bottom_right,
+        top_left,
+        bottom_right,
+        bottom_left,
+    ] {
+        vertices.push(HudVertex { position, color });
     }
 }
 
@@ -562,5 +779,64 @@ fn create_pipelines(
         cache: None,
     });
 
-    Pipelines { format, base, fur }
+    let hud_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Donut HUD Shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("hud.wgsl").into()),
+    });
+    const HUD_ATTRIBUTES: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x4];
+
+    let hud = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Donut HUD Pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &hud_shader,
+            entry_point: Some("vs_main"),
+            buffers: &[Some(wgpu::VertexBufferLayout {
+                array_stride: size_of::<HudVertex>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &HUD_ATTRIBUTES,
+            })],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &hud_shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::Always),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: MSAA_SAMPLES,
+            ..Default::default()
+        },
+        multiview_mask: None,
+        cache: None,
+    });
+
+    Pipelines {
+        format,
+        base,
+        fur,
+        hud,
+    }
 }
