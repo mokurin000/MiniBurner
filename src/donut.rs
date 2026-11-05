@@ -1,7 +1,7 @@
 //! Rendering of the donut model.
 //!
 //! The donut is the `donut.glb` model shipped with the app: a torus whose
-//! symmetry axis is the glTF Y axis. It is tilted 15 degrees away from the
+//! symmetry axis is the glTF Y axis. It is tilted 7 degrees away from the
 //! screen plane and then spun around the screen's Z axis, so the camera always
 //! sees the whole ring while it turns.
 //!
@@ -39,7 +39,7 @@ const MSAA_SAMPLES: u32 = 4;
 /// Vertical field of view of the camera in degrees.
 const FIELD_OF_VIEW_Y: f32 = 45.0;
 /// Angle between the torus plane and the screen plane, in degrees.
-const TILT_DEGREES: f32 = 15.0;
+const TILT_DEGREES: f32 = 7.0;
 /// Distance of the near clipping plane.
 const NEAR_PLANE: f32 = 0.1;
 /// Distance of the far clipping plane, comfortably beyond any camera distance.
@@ -187,7 +187,7 @@ impl Uniforms {
             NEAR_PLANE,
             FAR_PLANE,
         );
-        // Center the mesh, tilt it 15 degrees away from the screen plane, then
+        // Center the mesh, tilt it 7 degrees away from the screen plane, then
         // spin it around the screen's Z axis.
         let model = Mat4::from_rotation_z(spin)
             * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2 + TILT_DEGREES.to_radians())

@@ -43,6 +43,8 @@ pub struct MainModel {
     burning: bool,
     /// Rotation of the donut around the screen's Z axis, in radians.
     spin: f32,
+
+    clockwise: bool,
 }
 
 pub enum MainMessage {
@@ -56,6 +58,8 @@ pub enum MainMessage {
     ThemeChanged,
     /// Close main window
     Close,
+    /// Inverse rotate direction
+    InverseDirection,
 }
 
 impl Component for MainModel {
@@ -120,6 +124,7 @@ impl Component for MainModel {
             queue,
             renderer: None,
             burning: false,
+            clockwise: true,
             spin: 0.0,
         })
     }
@@ -133,7 +138,9 @@ impl Component for MainModel {
                 WindowEvent::Close => MainMessage::Close,
                 WindowEvent::ThemeChanged => MainMessage::ThemeChanged,
             },
-            self.canvas => {},
+            self.canvas => {
+                WgpuCanvasEvent::MouseDown(_) => MainMessage::InverseDirection,
+            },
             self.quality => {},
             self.skip_cpu_burn => {},
             self.start_button => {
@@ -189,9 +196,22 @@ impl Component for MainModel {
                 if !self.burning {
                     return Ok(false);
                 }
-                self.spin = (self.spin + SPIN_DEGREES_PER_TICK.to_radians())
-                    .rem_euclid(std::f32::consts::TAU);
+
+                // counterclockwise
+                if !self.clockwise {
+                    self.spin = (self.spin + SPIN_DEGREES_PER_TICK.to_radians())
+                        .rem_euclid(std::f32::consts::TAU);
+                // clockwise
+                } else {
+                    self.spin = (self.spin - SPIN_DEGREES_PER_TICK.to_radians())
+                        .rem_euclid(std::f32::consts::TAU);
+                }
+
                 Ok(true)
+            }
+            MainMessage::InverseDirection => {
+                self.clockwise = !self.clockwise;
+                Ok(false)
             }
             MainMessage::ThemeChanged => Ok(false),
             MainMessage::Resize => Ok(true),
