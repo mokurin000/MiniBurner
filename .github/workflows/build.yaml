@@ -41,6 +41,7 @@ jobs:
       - windows-10
       - windows-11
       - macos
+      - android
 
     runs-on: ubuntu-24.04
 
