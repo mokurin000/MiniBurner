@@ -72,7 +72,7 @@ panic = "abort"
 # Full binary optimization
 codegen-units = 1
 lto = true
-
+strip = true
 
 [profile.dev]
 debug = "limited"
