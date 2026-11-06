@@ -39,7 +39,7 @@ pub struct MainModel {
     window: Child<Window>,
     canvas: Child<WgpuCanvas>,
     /// Fur layers slider, shown until the burn starts.
-    fur_layers_slider: Child<Slider>,
+    fur_layers_slider: Child<UpDownEdit>,
     /// Fur layers
     fur_layers_label: Child<Label>,
     /// Starts the CPU and GPU burn.
@@ -115,10 +115,10 @@ impl Component for MainModel {
                 text: "Skip CPU Burn",
             },
             canvas: WgpuCanvas = (&window),
-            fur_layers_slider: Slider = (&window) => {
+            fur_layers_slider: UpDownEdit = (&window) => {
                 minimum: 5,
                 maximum: 17,
-                pos: DEFAULT_POS,
+                value: DEFAULT_POS,
             },
             fur_layers_label: Label = (&window) => {},
             start_button: Button = (&window) => {
@@ -127,7 +127,7 @@ impl Component for MainModel {
             timer: Timer = (TICK_INTERVAL) => {}
         }
 
-        fur_layers_slider.pos_prop()?.bind(sender, |pos| {
+        fur_layers_slider.value_prop()?.bind(sender, |pos| {
             MainMessage::UpdateFurLayers(pos_to_layers(pos))
         });
 
