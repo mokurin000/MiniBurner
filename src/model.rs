@@ -14,31 +14,34 @@ const SPIN_DEGREES_PER_TICK: f32 = 6.0;
 /// Limit to 60 FPS.
 const TICK_INTERVAL: Duration = Duration::from_micros(16666);
 
-/// Selectable fur quality tiers: label and number of fur shells.
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-const FUR_QUALITY: [(&str, u32); 4] = [
-    ("Low End", 128),
-    ("Medium", 256),
-    ("High End", 768),
-    ("Extreme", 1024),
-];
 #[cfg(any(target_os = "android", target_os = "ios"))]
-const FUR_QUALITY: [(&str, u32); 4] = [
-    ("Low End", 32),
-    ("Medium", 64),
-    ("High End", 128),
-    ("Extreme", 256),
-];
-/// Quality tier selected when the window opens.
-const DEFAULT_FUR_QUALITY: usize = 2;
+const DEFAULT_POS: usize = 5;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const DEFAULT_POS: usize = 10;
+
+fn pos_to_layers(pos: usize) -> u32 {
+    if pos < 10 {
+        2_u32.pow(pos as _)
+    } else if pos % 2 == 0 {
+        let exp = 10 + (pos as u32 - 10) / 2;
+        2_u32
+            .saturating_pow(exp - 1)
+            .saturating_add(2_u32.saturating_pow(exp - 2))
+    } else {
+        let exp = 10 + (pos as u32 - 10) / 2;
+        2_u32.saturating_pow(exp)
+    }
+}
 
 /// Root component of the application UI.
 pub struct MainModel {
     /// The main application window.
     window: Child<Window>,
     canvas: Child<WgpuCanvas>,
-    /// Fur quality selector, shown until the burn starts.
-    quality: Child<ComboBox>,
+    /// Fur layers slider, shown until the burn starts.
+    fur_layers_slider: Child<Slider>,
+    /// Fur layers
+    fur_layers_label: Child<Label>,
     /// Starts the CPU and GPU burn.
     start_button: Child<Button>,
     /// Skip the CPU burn
@@ -55,6 +58,7 @@ pub struct MainModel {
     /// Rotation of the donut around the screen's Z axis, in radians.
     spin: f32,
 
+    fur_layers: u32,
     clockwise: bool,
 }
 
@@ -69,6 +73,8 @@ pub enum MainMessage {
     ThemeChanged,
     /// Close main window
     Close,
+    /// Update fur layers
+    UpdateFurLayers(u32),
     /// Inverse rotate direction
     InverseDirection,
 }
@@ -79,7 +85,7 @@ impl Component for MainModel {
     type Init<'a> = ();
     type Message = MainMessage;
 
-    async fn init(_init: Self::Init<'_>, _sender: &ComponentSender<Self>) -> Result<Self> {
+    async fn init(_init: Self::Init<'_>, sender: &ComponentSender<Self>) -> Result<Self> {
         // Note: color-eyre does not enable VT100 on Windows on its own
         color_eyre::install()?;
 
@@ -96,7 +102,6 @@ impl Component for MainModel {
             .first()
             .map(|m| m.region().size)
             .unwrap_or(Size::new(1920., 1080.));
-        let quality_labels = FUR_QUALITY.map(|(label, _)| label);
 
         init! {
             window: Window = (()) => {
@@ -110,15 +115,21 @@ impl Component for MainModel {
                 text: "Skip CPU Burn",
             },
             canvas: WgpuCanvas = (&window),
-            quality: ComboBox = (&window) => {
-                items: quality_labels,
-                selection: DEFAULT_FUR_QUALITY,
+            fur_layers_slider: Slider = (&window) => {
+                pos: DEFAULT_POS,
+                minimum: 5,
+                maximum: 17,
             },
+            fur_layers_label: Label = (&window) => {},
             start_button: Button = (&window) => {
                 text: "Start",
             },
             timer: Timer = (TICK_INTERVAL) => {}
         }
+
+        fur_layers_slider.pos_prop()?.bind(sender, |pos| {
+            MainMessage::UpdateFurLayers(pos_to_layers(pos))
+        });
 
         canvas.bind(&instance, &adapter);
         canvas.set_size(window.client_size()?)?;
@@ -129,12 +140,14 @@ impl Component for MainModel {
         Ok(Self {
             window,
             canvas,
-            quality,
+            fur_layers_slider,
+            fur_layers_label,
             start_button,
             skip_cpu_burn,
             device,
             queue,
             timer,
+            fur_layers: 0,
             renderer: None,
             burning: false,
             clockwise: true,
@@ -154,7 +167,7 @@ impl Component for MainModel {
             self.canvas => {
                 WgpuCanvasEvent::MouseDown(_) => MainMessage::InverseDirection,
             },
-            self.quality => {},
+            self.fur_layers_slider => {},
             self.skip_cpu_burn => {},
             self.start_button => {
                 ButtonEvent::Click => MainMessage::Start,
@@ -170,7 +183,7 @@ impl Component for MainModel {
         update_children!(
             self.window,
             self.canvas,
-            self.quality,
+            self.fur_layers_slider,
             self.start_button,
             self.skip_cpu_burn,
             self.timer,
@@ -184,22 +197,25 @@ impl Component for MainModel {
     ) -> Result<bool> {
         // deal with custom messages
         match message {
+            MainMessage::UpdateFurLayers(fur_layers) => {
+                self.fur_layers = fur_layers;
+                self.fur_layers_label
+                    .set_text(format!("Layers: {fur_layers}"))?;
+                Ok(true)
+            }
             MainMessage::Start => {
                 if self.burning {
                     return Ok(false);
                 }
 
-                let selected = self.quality.selection()?.unwrap_or(DEFAULT_FUR_QUALITY);
-                let fur_layers = FUR_QUALITY
-                    .get(selected)
-                    .map(|(_, layers)| *layers)
-                    .unwrap_or(FUR_QUALITY[DEFAULT_FUR_QUALITY].1);
+                let fur_layers = self.fur_layers;
 
                 // Build the renderer first: if it fails, the UI stays usable.
                 self.renderer = Some(DonutRenderer::new(&self.device, fur_layers)?);
                 self.burning = true;
 
-                self.quality.set_visible(false)?;
+                self.fur_layers_slider.set_visible(false)?;
+                self.fur_layers_label.set_visible(false)?;
                 self.start_button.set_visible(false)?;
                 self.canvas.set_visible(true)?;
 
@@ -254,10 +270,13 @@ impl Component for MainModel {
         if !self.burning {
             let mut inner_layout = layout! {
                 StackPanel::new(Orient::Vertical),
-                self.quality => {
+                self.skip_cpu_burn => {
                     margin: Margin::new_all_same(2.0),
                 },
-                self.skip_cpu_burn => {
+                self.fur_layers_label => {
+                    margin: Margin::new(2.0, 2.0, 0.0, 2.0),
+                },
+                self.fur_layers_slider => {
                     margin: Margin::new_all_same(2.0),
                 },
                 self.start_button => {
@@ -303,7 +322,8 @@ impl Component for MainModel {
     fn render_children(&mut self) -> Result<()> {
         self.window.render()?;
         if !self.burning {
-            self.quality.render()?;
+            self.fur_layers_slider.render()?;
+            self.fur_layers_label.render()?;
             self.skip_cpu_burn.render()?;
             self.start_button.render()?;
         }

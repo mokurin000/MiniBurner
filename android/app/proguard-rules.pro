@@ -33,4 +33,4 @@
 # -keep, includedescriptorclasses class com.google.android.material.progressindicator.** { *; }
 
 # Slider
-# -keep, includedescriptorclasses class com.google.android.material.slider.** { *; }
+-keep, includedescriptorclasses class com.google.android.material.slider.** { *; }
