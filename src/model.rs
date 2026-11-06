@@ -275,11 +275,11 @@ impl Component for MainModel {
                 self.skip_cpu_burn => {
                     margin: Margin::new_all_same(2.0),
                 },
-                self.fur_layers_label => {
-                    margin: Margin::new(2.0, 2.0, 0.0, 2.0),
-                },
                 self.fur_layers_slider => {
                     margin: Margin::new_all_same(2.0),
+                },
+                self.fur_layers_label => {
+                    margin: Margin::new(2.0, 2.0, 0.0, 2.0),
                 },
                 self.start_button => {
                     margin: Margin::new_all_same(2.0),
