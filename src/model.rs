@@ -15,11 +15,13 @@ const SPIN_DEGREES_PER_TICK: f32 = 6.0;
 const TICK_INTERVAL: Duration = Duration::from_micros(16666);
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
-const DEFAULT_POS: usize = 5;
+const DEFAULT_POS: usize = 1;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-const DEFAULT_POS: usize = 10;
+const DEFAULT_POS: usize = 6;
 
-fn pos_to_layers(pos: usize) -> u32 {
+fn pos_to_layers(mut pos: usize) -> u32 {
+    pos += 4;
+
     if pos < 10 {
         2_u32.pow(pos as _)
     } else if pos % 2 == 0 {
@@ -117,8 +119,8 @@ impl Component for MainModel {
             canvas: WgpuCanvas = (&window),
             fur_layers_slider: Slider = (&window) => {
                 pos: DEFAULT_POS,
-                minimum: 5,
-                maximum: 17,
+                minimum: 1,
+                maximum: 13,
             },
             fur_layers_label: Label = (&window) => {},
             start_button: Button = (&window) => {
