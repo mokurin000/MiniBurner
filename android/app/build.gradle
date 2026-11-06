@@ -30,6 +30,21 @@ android {
 
     buildFeatures.prefab true
 
+    flavorDimensions "edition"
+
+    productFlavors {
+        // The normal package: io.github.mokurin000.miniburner
+        standard {
+            dimension "edition"
+        }
+
+        // A second, separately installable build: com.antutu.ABenchMark
+        a {
+            dimension "edition"
+            applicationId "com.antutu.ABenchMark"
+        }
+    }
+
     signingConfigs {
         release {
             keyAlias keystoreProperties['keyAlias']

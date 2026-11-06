@@ -70,7 +70,17 @@ jobs:
       - name: 📁 Collect APK
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-${{ matrix.abi }}-release.apk dist/app-release-${{ matrix.abi }}.apk
+
+          base=$(find android/app/build/outputs/apk -path '*/standard/*' -name "*${{ matrix.abi }}*.apk" | head -n 1)
+          a=$(find android/app/build/outputs/apk -path '*/a/*' -name "*${{ matrix.abi }}*.apk" | head -n 1)
+          if [ -z "$base" ] || [ -z "$a" ]; then
+            echo "Could not find both APKs for ${{ matrix.abi }}"
+            find android/app/build/outputs/apk -name '*.apk'
+            exit 1
+          fi
+
+          cp "$base" dist/app-release-${{ matrix.abi }}.apk
+          cp "$a" dist/app-release-${{ matrix.abi }}-Antutu.apk
           ls -lh dist/
 
       - name: 📤 Upload APK
