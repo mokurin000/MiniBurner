@@ -116,9 +116,9 @@ impl Component for MainModel {
             },
             canvas: WgpuCanvas = (&window),
             fur_layers_slider: UpDownEdit = (&window) => {
-                minimum: 5,
                 maximum: 17,
                 value: DEFAULT_POS,
+                minimum: 5,
             },
             fur_layers_label: Label = (&window) => {},
             start_button: Button = (&window) => {
