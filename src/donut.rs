@@ -71,7 +71,7 @@ const SPECULAR_STRENGTH: f32 = 0.6;
 /// Length of the fur along the surface normal, in model units.
 const FUR_LENGTH: f32 = 0.24;
 /// Number of fur strands per UV unit.
-const FUR_DENSITY: f32 = 350.0;
+const FUR_DENSITY: f32 = 1400.0;
 /// Fur length scale at grazing angles, where the fur thins out.
 const FUR_EDGE_LENGTH: f32 = 0.18;
 /// Color of the fur tips.
