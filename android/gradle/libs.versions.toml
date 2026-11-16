@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.1"
+agp = "9.5.1"
 core = "1.19.0"
 gamesActivity = "4.4.2"
 appcompat = "1.7.1"
