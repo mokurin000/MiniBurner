@@ -110,6 +110,8 @@ impl Component for MainModel {
 
                 #[cfg(all(windows, feature = "winui"))]
                 backdrop: Backdrop::Mica,
+                #[cfg(windows)]
+                icon_by_id: 1,
             },
             skip_cpu_burn: CheckBox = (&window) => {
                 text: "Skip CPU Burn",
